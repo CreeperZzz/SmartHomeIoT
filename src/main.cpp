@@ -13,8 +13,9 @@
 #define SERVO_PORT 21
 #define LIGHT_SENSOR_PORT 37
 #define MOTION_SENSOR_PORT 2
-#define DEBUG 1
 #define MOTION_STATUS_DELAY 5000;
+
+#define DEBUG 0
 
 Servo myservo;
 
@@ -39,8 +40,6 @@ char pass[] = ""; // your network password (use for WPA, or use as key for WEP)
 
 char homessid[] = "NO WIFI";
 char homepass[] = "bb110113";
-
-char httpFail[] = "Http Failed";
 
 const char kHostname[] = "54.219.68.25";
 const uint16_t kPort = 8080;
@@ -94,7 +93,7 @@ int lightSensorController(){
 }
 
 
-char* sendHttpRequest(char kPath[]){
+int sendHttpRequest(char kPath[]){
   int err = 0;
   WiFiClient c;
   HttpClient http(c);
@@ -133,6 +132,7 @@ char* sendHttpRequest(char kPath[]){
         // Now we've got to the body, so we can print it out
         unsigned long timeoutStart = millis();
         char c;
+        memset(value,0,100);
         // Whilst we haven't timed out & haven't reached the end of the body
         while ( (http.connected() || http.available()) &&
               ((millis() - timeoutStart) < kNetworkTimeout) )
@@ -142,7 +142,7 @@ char* sendHttpRequest(char kPath[]){
                 c = http.read();
                 // Print out this character
                 if(DEBUG){Serial.print(c);}
-                strncat(str,&c,1);
+                strncat(value,&c,1);
               
                 // We read something, reset the timeout counter
                 timeoutStart = millis();
@@ -155,9 +155,10 @@ char* sendHttpRequest(char kPath[]){
             }
         }
         http.stop();
-        memset(value,0,100);
-        strncpy(value,str,bodyLen);
-        return value;
+        // memset(value,0,100);
+        // strncpy(value,str,bodyLen);
+        strncat(value, "\0",1);
+        return 1;
       }
       else
       {
@@ -177,13 +178,14 @@ char* sendHttpRequest(char kPath[]){
     Serial.println(err);
   }
   http.stop();
-  return httpFail;
+  return 0;
 }
 
 int getLightStatus(){
   char path[] = "/info/light";
-  sendHttpRequest(path);
-  Serial.println(value);
+  if(sendHttpRequest(path)){
+      Serial.println(value);
+  }
   return atoi(value);
 }
 
@@ -225,11 +227,11 @@ void setSleepStatus(int s){
   }
 }
 
-char* getCurrentTime(){
+int getCurrentTime(){
   char p[] = "/info/current_time";
-  char* v = sendHttpRequest(p);
-  Serial.println(v);
-  return v;
+  sendHttpRequest(p);
+  Serial.println(value);
+  return atoi(value);
 }
 
 void setup() {
@@ -274,17 +276,15 @@ void loop() {
    * detect Light Status change
    */
   if(prev_light_status != light_status){
-    if(DEBUG){Serial.println("light status changed");}
+    Serial.println("light status changed");
     if(light_status && is_sleeping){
       Serial.println("wake");
       is_sleeping = 0;
       setSleepStatus(0);
-    }else{
-      if(1){
+    }else if(!light_status && !is_sleeping){
         Serial.println("sleep");
         is_sleeping = 1;
         setSleepStatus(1);
-      }
     }
   }
 
@@ -293,12 +293,12 @@ void loop() {
   if(is_sleeping){
     if(get_motion()){
       if(!motion_status){
-        if(DEBUG){Serial.println("[sleep]Motion detect start");}
+        Serial.println("[sleep]Motion detect start");
         motion_status = 1;
         motion_timer = millis() + MOTION_STATUS_DELAY;
       }else{
         if(millis()>motion_timer){
-          if(DEBUG){Serial.println("[Motion] Wake up");}
+          Serial.println("[Motion] Wake up");
           is_sleeping = 0;
           setLightStatus(1);
           setSleepStatus(0);
@@ -306,108 +306,9 @@ void loop() {
       }
     }else{
       if(motion_status && millis()<motion_timer){
-        if(DEBUG){Serial.println("Back Sleep");}
+        Serial.println("Back Sleep");
         motion_status = 0;
       }
     }
   }
-
-  /**
-  if(startsleep){
-    sleep_status = 1;
-    startsleep = 0;
-  }
-
-  if(sleep_status){
-    if(get_motion() && !motion_status){
-      motion_status = 1;
-      motion_timer = millis() + 5000;
-    }
-    
-    if(millis() < motion_timer){
-      if(!get_motion()){
-        motion_status = 0;
-        Serial.println("Still sleep");
-      }
-      Serial.println("motion detected");
-    }else{
-      if(motion_status){
-        sleep_status = 0;
-        motion_status = 0;
-        Serial.println("wake up");
-        was_wake = 1;
-        setLight(1);
-      } 
-    }
-  }
-  */
-
-  // Serial.println(digitalRead(2));
 }
-
-// if (err == 0)
-//     {
-//       Serial.println();
-//       Serial.println("startedRequest ok");
-
-//       err = http.responseStatusCode();
-//       if (err >= 0)
-//       {
-//         Serial.print("Got status code: ");
-//         Serial.println(err);
-
-//         // Usually you'd check that the response code is 200 or a
-//         // similar "success" code (200-299) before carrying on,
-//         // but we'll print out whatever response we get
-
-//         err = http.skipResponseHeaders();
-//         if (err >= 0)
-//         {
-//           int bodyLen = http.contentLength();
-//           Serial.print("Content length is: ");
-//           Serial.println(bodyLen);
-//           Serial.println();
-//           Serial.println("Body returned follows:");
-        
-//           // Now we've got to the body, so we can print it out
-//           unsigned long timeoutStart = millis();
-//           char c;
-//           // Whilst we haven't timed out & haven't reached the end of the body
-//           while ( (http.connected() || http.available()) &&
-//                 ((millis() - timeoutStart) < kNetworkTimeout) )
-//           {
-//               if (http.available())
-//               {
-//                   c = http.read();
-//                   // Print out this character
-//                   Serial.print(c);
-                
-//                   bodyLen--;
-//                   // We read something, reset the timeout counter
-//                   timeoutStart = millis();
-//               }
-//               else
-//               {
-//                   // We haven't got any data, so let's pause to allow some to
-//                   // arrive
-//                   delay(kNetworkDelay);
-//               }
-//           }
-//         }
-//         else
-//         {
-//           Serial.print("Failed to skip response headers: ");
-//           Serial.println(err);
-//         }
-//       }
-//       else
-//       {    
-//         Serial.print("Getting response failed: ");
-//         Serial.println(err);
-//       }
-//     }
-//     else
-//     {
-//       Serial.print("Connect failed: ");
-//       Serial.println(err);
-//     }
